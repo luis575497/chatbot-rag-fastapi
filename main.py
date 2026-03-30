@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from uuid import uuid4
-from rag import preguntar_stream
+from rag import preguntar_stream, reset_session
 
 app = FastAPI()
 
@@ -48,4 +48,11 @@ async def chat(p: Pregunta):
 
 @app.get("/health")
 async def health():
+    return {"status": "ok"}
+
+
+@app.post("/session/reset")
+async def session_reset(p: Pregunta):
+    if p.session_id:
+        reset_session(p.session_id)
     return {"status": "ok"}

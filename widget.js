@@ -136,6 +136,13 @@
       border-radius: 6px; transition: color 0.15s, background 0.15s;
     }
     #rai-close:hover { color: var(--rai-text); background: var(--rai-border); }
+    #rai-reset {
+      background: none; border: none; cursor: pointer;
+      color: var(--rai-muted); padding: 4px;
+      border-radius: 6px; transition: color 0.15s, background 0.15s;
+      margin-right: 0.2rem;
+    }
+    #rai-reset:hover { color: var(--rai-text); background: var(--rai-border); }
 
     /* Mensajes */
     #rai-messages {
@@ -282,6 +289,13 @@
           <div id="rai-header-title">${CFG.titulo}</div>
           <div id="rai-header-status">● En línea</div>
         </div>
+        <button id="rai-reset" aria-label="Reiniciar chat" title="Reiniciar chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10M1 14l5.36 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
         <button id="rai-close" aria-label="Cerrar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -311,14 +325,18 @@
   const fab      = document.getElementById("rai-fab");
   const win      = document.getElementById("rai-window");
   const closeBtn = document.getElementById("rai-close");
+  const resetBtn = document.getElementById("rai-reset");
   const messages = document.getElementById("rai-messages");
   const input    = document.getElementById("rai-input");
   const sendBtn  = document.getElementById("rai-send");
   const chips    = document.querySelectorAll(".rai-chip");
+  const suggestions = document.getElementById("rai-suggestions");
 
   // ── Estado ───────────────────────────────────────────────────────────────
   let isOpen    = false;
   let isLoading = false;
+  let currentController = null;
+  let sessionId = crypto.randomUUID();
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   function toggleChat() {
@@ -343,13 +361,33 @@
     return div;
   }
 
-  function getSessionId() {
-    let id = localStorage.getItem("rai_session");
-      if (!id) {
-        id = crypto.randomUUID();
-        localStorage.setItem("rai_session", id);
-      }
-    return id;
+  async function limpiarSesionServidor(id) {
+    try {
+      await fetch(CFG.apiUrl.replace(/\/chat$/, "/session/reset"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "reset", session_id: id }),
+      });
+    } catch (err) {
+      console.warn("[RAI Widget] No pude limpiar la sesión en servidor.", err);
+    }
+  }
+
+  async function reiniciarSesion() {
+    const previousId = sessionId;
+
+    if (currentController) {
+      currentController.abort();
+      currentController = null;
+    }
+
+    isLoading = false;
+    sendBtn.disabled = false;
+    sessionId = crypto.randomUUID();
+    messages.innerHTML = "";
+    suggestions.style.display = "flex";
+    addMessage(CFG.bienvenida, "bot");
+    await limpiarSesionServidor(previousId);
   }
 
   function addTyping() {
@@ -370,7 +408,7 @@
 
     isLoading = true;
     sendBtn.disabled = true;
-    document.getElementById("rai-suggestions").style.display = "none";
+    suggestions.style.display = "none";
 
     addMessage(texto, "user");
     input.value = "";
@@ -379,12 +417,14 @@
     const typing = addTyping();
 
     try {
+      currentController = new AbortController();
       const res = await fetch(CFG.apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: currentController.signal,
         body: JSON.stringify({ 
           query: texto, 
-          session_id: getSessionId()
+          session_id: sessionId
         }),
       });
 
@@ -418,11 +458,16 @@
 
     } catch (err) {
       typing.remove();
-      addMessage("⚠️ No pude conectarme al servidor. ¿Está corriendo el backend?", "bot");
-      console.error("[RAI Widget]", err);
+      if (err.name === "AbortError") {
+        addMessage("Sesión reiniciada. Puedes hacer una nueva consulta.", "bot");
+      } else {
+        addMessage("⚠️ No pude conectarme al servidor. ¿Está corriendo el backend?", "bot");
+        console.error("[RAI Widget]", err);
+      }
     } finally {
       isLoading = false;
       sendBtn.disabled = false;
+      currentController = null;
       input.focus();
     }
   }
@@ -430,6 +475,7 @@
   // ── Eventos ──────────────────────────────────────────────────────────────
   fab.addEventListener("click", toggleChat);
   closeBtn.addEventListener("click", toggleChat);
+  resetBtn.addEventListener("click", reiniciarSesion);
 
   sendBtn.addEventListener("click", () => enviar(input.value));
 
