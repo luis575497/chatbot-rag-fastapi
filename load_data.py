@@ -79,12 +79,12 @@ def main() -> None:
     documentos = cargar_todos_los_documentos(RUTA_DOCUMENTOS)
     print(f"📚 Total documentos cargados: {len(documentos)}")
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=30)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     docs_divididos = splitter.split_documents(documentos)
 
     print(f"✂️ Fragmentos generados: {len(docs_divididos)}")
 
-    embedding = OllamaEmbeddings(model="llama3")
+    embedding = OllamaEmbeddings(model="nomic-embed-text")
 
     db = Chroma.from_documents(
         documents=docs_divididos,
@@ -92,7 +92,6 @@ def main() -> None:
         persist_directory="./db",
     )
 
-    db.persist()
     print("✅ Base vectorial creada correctamente")
 
 

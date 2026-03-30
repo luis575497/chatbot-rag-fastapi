@@ -343,6 +343,15 @@
     return div;
   }
 
+  function getSessionId() {
+    let id = localStorage.getItem("rai_session");
+      if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem("rai_session", id);
+      }
+    return id;
+  }
+
   function addTyping() {
     const div = document.createElement("div");
     div.className = "rai-typing";
@@ -373,7 +382,10 @@
       const res = await fetch(CFG.apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: texto }),
+        body: JSON.stringify({ 
+          query: texto, 
+          session_id: getSessionId()
+        }),
       });
 
       if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
