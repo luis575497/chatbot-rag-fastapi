@@ -22,4 +22,5 @@ dependencies = [
     "pydantic>=2.12.5",
     "python-docx>=1.2.0",
     "uvicorn>=0.42.0",
+    "pydantic-settings>=2.13.1",
 ]

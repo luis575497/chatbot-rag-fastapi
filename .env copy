@@ -1,0 +1,39 @@
+# ════════════════════════════════════════════════════════════
+#  .env — Configuración del chatbot RAG
+#  Copia este archivo y edítalo para cada institución.
+#  NUNCA subas este archivo a git (agrégalo al .gitignore).
+# ════════════════════════════════════════════════════════════
+
+# ── Institución ──────────────────────────────────────────────
+NOMBRE_INSTITUCION=Biblioteca Digital UAPA
+NOMBRE_ASISTENTE=Asistente RAI
+BIENVENIDA=¡Hola! Soy el asistente de la Biblioteca Digital. ¿En qué te puedo ayudar hoy?
+
+# ── Modelo Ollama ────────────────────────────────────────────
+# Modelos disponibles según tu instalación de Ollama.
+# LLM principales:     llama3, llama3.2, gemma2, mistral, phi3
+# Embeddings rápidos:  nomic-embed-text, mxbai-embed-large
+MODELO_LLM=llama3
+MODELO_EMBEDDING=nomic-embed-text
+
+# ── RAG ──────────────────────────────────────────────────────
+# Cuántos fragmentos recuperar del vectorstore por tipo de consulta
+RAG_K_FAQ=3
+RAG_K_BUSQUEDA=6
+
+# ── Sesiones ─────────────────────────────────────────────────
+# Minutos de inactividad antes de expirar la sesión del usuario
+SESSION_TTL_MIN=30
+
+# ── CORS ─────────────────────────────────────────────────────
+# Lista JSON de dominios permitidos para hacer peticiones al backend
+# Ejemplo producción: ["https://biblioteca.uapa.edu.do"]
+# Ejemplo desarrollo: ["http://localhost:5500","http://127.0.0.1:5500"]
+ALLOWED_ORIGINS=["http://localhost:5500","http://127.0.0.1:5500"]
+
+# ── Widget (se pasan al endpoint /widget-config) ─────────────
+WIDGET_COLOR_PRIMARIO=#c9a84c
+WIDGET_COLOR_PRIMARIO_HOVER=#e8c97a
+WIDGET_POSICION=right
+# Sugerencias que aparecen al abrir el chat (separadas por |)
+WIDGET_CHIPS=¿Cómo busco una tesis?|Documentos de tecnología|Tesis de psicología 2020-2024

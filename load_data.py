@@ -1,3 +1,7 @@
+"""
+load_data.py — Carga documentos en el vectorstore.
+Lee el modelo de embeddings desde settings.
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,85 +18,81 @@ from langchain_community.document_loaders import (
 from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-RUTA_DOCUMENTOS = Path("./documentos")
+from config import settings
+
+RUTA_DOCUMENTOS  = Path("./documentos")
 TIPOS_SOPORTADOS = {".docx", ".pdf", ".csv", ".txt", ".xlsx", ".xls"}
 
 
 def cargar_documento(path: Path) -> list[Document]:
-    extension = path.suffix.lower()
+    ext = path.suffix.lower()
 
-    if extension == ".docx":
+    if ext == ".docx":
         docs = Docx2txtLoader(str(path)).load()
-    elif extension == ".pdf":
+    elif ext == ".pdf":
         docs = PyPDFLoader(str(path)).load()
-    elif extension == ".csv":
+    elif ext == ".csv":
         docs = CSVLoader(file_path=str(path), encoding="utf-8").load()
-    elif extension == ".txt":
+    elif ext == ".txt":
         docs = TextLoader(file_path=str(path), encoding="utf-8").load()
-    elif extension in {".xlsx", ".xls"}:
-        df = pd.read_excel(path).fillna("")
+    elif ext in {".xlsx", ".xls"}:
+        df   = pd.read_excel(path).fillna("")
         docs = []
-
-        for index, row in df.iterrows():
-            contenido = "\n".join(f"{col}: {valor}" for col, valor in row.items())
-            docs.append(
-                Document(
-                    page_content=contenido,
-                    metadata={"row": int(index) + 2},
-                )
-            )
+        for idx, row in df.iterrows():
+            contenido = "\n".join(f"{col}: {val}" for col, val in row.items())
+            docs.append(Document(
+                page_content=contenido,
+                metadata={"row": int(idx) + 2},
+            ))
     else:
         return []
 
     for doc in docs:
-        doc.metadata["source"] = path.name
-        doc.metadata["filetype"] = extension
+        doc.metadata["source"]   = path.name
+        doc.metadata["filetype"] = ext
 
     return docs
 
 
-def cargar_todos_los_documentos(ruta_documentos: Path) -> list[Document]:
+def cargar_todos(ruta: Path) -> list[Document]:
+    if not ruta.exists():
+        raise FileNotFoundError(f"No existe la ruta: {ruta.resolve()}")
+
     documentos: list[Document] = []
-
-    if not ruta_documentos.exists():
-        raise FileNotFoundError(
-            f"No existe la ruta de documentos: {ruta_documentos.resolve()}"
-        )
-
-    for path in sorted(ruta_documentos.iterdir()):
+    for path in sorted(ruta.iterdir()):
         if not path.is_file():
             continue
-
-        extension = path.suffix.lower()
-        if extension not in TIPOS_SOPORTADOS:
-            print(f"⏭️ Omitido (tipo no soportado): {path.name}")
+        if path.suffix.lower() not in TIPOS_SOPORTADOS:
+            print(f"⏭️  Omitido (tipo no soportado): {path.name}")
             continue
-
         docs = cargar_documento(path)
         documentos.extend(docs)
-        print(f"📄 Cargado {path.name}: {len(docs)} documento(s)")
+        print(f"📄 Cargado {path.name}: {len(docs)} fragmento(s)")
 
     return documentos
 
 
 def main() -> None:
-    documentos = cargar_todos_los_documentos(RUTA_DOCUMENTOS)
-    print(f"📚 Total documentos cargados: {len(documentos)}")
+    print(f"🏛️  Institución : {settings.nombre_institucion}")
+    print(f"🤖 Embedding   : {settings.modelo_embedding}")
+    print(f"📂 Documentos  : {RUTA_DOCUMENTOS.resolve()}\n")
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    documentos = cargar_todos(RUTA_DOCUMENTOS)
+    print(f"\n📚 Total documentos cargados: {len(documentos)}")
+
+    splitter      = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     docs_divididos = splitter.split_documents(documentos)
+    print(f"✂️  Fragmentos generados     : {len(docs_divididos)}")
 
-    print(f"✂️ Fragmentos generados: {len(docs_divididos)}")
+    # Usa el modelo de embeddings definido en .env
+    emb = OllamaEmbeddings(model=settings.modelo_embedding)
 
-    embedding = OllamaEmbeddings(model="nomic-embed-text")
-
-    db = Chroma.from_documents(
+    Chroma.from_documents(
         documents=docs_divididos,
-        embedding=embedding,
+        embedding=emb,
         persist_directory="./db",
     )
-
-    print("✅ Base vectorial creada correctamente")
+    print("✅ Base vectorial creada correctamente en ./db")
 
 
 if __name__ == "__main__":

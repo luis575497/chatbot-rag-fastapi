@@ -1,162 +1,157 @@
-import re
+"""
+rag.py — Motor RAG parametrizado con settings.
+"""
+from __future__ import annotations
+
+import time
 from typing import Generator
 
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 
-from prompt import PROMPT_BASE
-
-# Embeddings para la base vectorial
-embedding = OllamaEmbeddings(model="nomic-embed-text")
-
-# Base vectorial local
-db = Chroma(persist_directory="./db", embedding_function=embedding)
-
-# Modelo LLM con streaming activado
-llm = OllamaLLM(model="llama3", streaming=True)
-
-# Recuperar más candidatos para aumentar probabilidad de resultados útiles
-retriever = db.as_retriever(search_kwargs={"k": 6})
-
-memorias: dict[str, list[str]] = {}
-PATRON_CONSULTA_GENERAL = re.compile(
-    r"\b(hora|horario|abre|abren|cierr[ae]n?|direcci[oó]n|ubicaci[oó]n|"
-    r"tel[eé]fono|contacto|correo|email|servicios?|pr[eé]stamo|carnet)\b",
-    re.IGNORECASE,
-)
-PATRON_BUSQUEDA_DOCUMENTAL = re.compile(
-    r"\b(tesis|art[íi]culo|articulos|documentos?|libros?|autor|handle|enlace|"
-    r"investigaci[oó]n|repositorio|recurso)\b",
-    re.IGNORECASE,
-)
-PATRON_AYUDA_USO_RAI = re.compile(
-    r"(c[oó]mo|como).*(buscar|b[uú]squeda|uso|usar).*(rai|repositorio)|"
-    r"(rai|repositorio).*(c[oó]mo|como).*(buscar|b[uú]squeda|uso|usar)",
-    re.IGNORECASE,
+from config import settings
+from prompt import (
+    PROMPT_CLASIFICAR,
+    PROMPT_FAQ,
+    PROMPT_BUSQUEDA,
+    PROMPT_OTRO,
+    RESPUESTA_SALUDO,
 )
 
+# ── Modelos (leídos desde settings) ──────────────────────────────────────────
+embedding = OllamaEmbeddings(model=settings.modelo_embedding)
+db        = Chroma(persist_directory="./db", embedding_function=embedding)
 
-def _deduplicar_docs(docs: list) -> list:
-    vistos: set[tuple[str, str, str]] = set()
-    unicos: list = []
+llm     = OllamaLLM(model=settings.modelo_llm, streaming=True)
+llm_cls = OllamaLLM(model=settings.modelo_llm, streaming=False)
 
-    for doc in docs:
-        clave = (
-            str(doc.metadata.get("source", "")),
-            str(doc.metadata.get("row", "")),
-            doc.page_content.strip(),
-        )
-        if clave in vistos:
-            continue
-        vistos.add(clave)
-        unicos.append(doc)
+retriever_faq      = db.as_retriever(search_kwargs={"k": settings.rag_k_faq})
+retriever_busqueda = db.as_retriever(search_kwargs={"k": settings.rag_k_busqueda})
 
-    return unicos
+# ── Sesiones ──────────────────────────────────────────────────────────────────
+_sesiones: dict[str, dict] = {}
 
 
-def _formatear_contexto(docs) -> str:
-    if not docs:
-        return "Sin resultados recuperados."
-
-    bloques: list[str] = []
-    for i, doc in enumerate(docs, start=1):
-        source = doc.metadata.get("source", "No disponible")
-        row = doc.metadata.get("row", "No disponible")
-        filetype = doc.metadata.get("filetype", "No disponible")
-        bloques.append(
-            (
-                f"[Resultado {i}]\n"
-                f"source: {source}\n"
-                f"row: {row}\n"
-                f"filetype: {filetype}\n"
-                f"contenido:\n{doc.page_content.strip()}"
-            )
-        )
-
-    return "\n\n".join(bloques)
-
-
-def _es_consulta_general(texto: str) -> bool:
-    return bool(PATRON_CONSULTA_GENERAL.search(texto)) and not bool(
-        PATRON_BUSQUEDA_DOCUMENTAL.search(texto)
-    )
-
-
-def _respuesta_consulta_general(pregunta: str) -> str:
-    return (
-        "Entiendo que esta es una consulta general de la biblioteca "
-        f"(\"{pregunta}\"). En este momento no tengo la tabla operativa "
-        "de horarios/contacto cargada en esta base.\n\n"
-        "Si quieres, te ayudo con recursos del repositorio (tesis, artículos, "
-        "libros) o puedo orientarte para contactar a la biblioteca."
-    )
-
-
-def _es_ayuda_uso_rai(texto: str) -> bool:
-    return bool(PATRON_AYUDA_USO_RAI.search(texto))
-
-
-def _respuesta_ayuda_uso_rai() -> str:
-    return (
-        "¡Claro! Si quieres **hacer una búsqueda en el RAI**, te recomiendo este flujo:\n\n"
-        "1) Define tu tema en 2–4 palabras clave.\n"
-        "   - Ejemplo: `violencia escolar adolescentes`.\n"
-        "2) Añade un filtro útil (tipo, año, autor o carrera).\n"
-        "   - Ejemplo: `tesis violencia escolar 2020-2024`.\n"
-        "3) Prueba variantes y sinónimos si salen pocos resultados.\n"
-        "   - Ejemplo: `acoso escolar` / `bullying`.\n"
-        "4) Revisa primero título, autor y año para descartar rápido.\n"
-        "5) Cuando encuentres uno relevante, abre el handle/enlace para ver el registro completo.\n\n"
-        "Si quieres, te ayudo a construir una consulta exacta según tu tema."
-    )
+def _get_session(session_id: str) -> dict:
+    ahora = time.time()
+    sesion = _sesiones.get(session_id)
+    if sesion is None or (ahora - sesion["last_active"]) > settings.session_ttl_sec:
+        _sesiones[session_id] = {"history": [], "last_active": ahora}
+    else:
+        _sesiones[session_id]["last_active"] = ahora
+    return _sesiones[session_id]
 
 
 def reset_session(session_id: str) -> None:
-    memorias.pop(session_id, None)
+    _sesiones.pop(session_id, None)
 
 
+def _purgar_expiradas() -> None:
+    ahora = time.time()
+    expiradas = [
+        sid for sid, d in _sesiones.items()
+        if ahora - d["last_active"] > settings.session_ttl_sec
+    ]
+    for sid in expiradas:
+        del _sesiones[sid]
+
+
+# ── Clasificación semántica ───────────────────────────────────────────────────
+_INTENCIONES_VALIDAS = {"faq", "busqueda", "saludo", "otro"}
+
+
+def _clasificar_intencion(mensaje: str) -> str:
+    prompt = PROMPT_CLASIFICAR.format(mensaje=mensaje)
+    try:
+        resultado = llm_cls.invoke(prompt).strip().lower()
+        primera   = resultado.split()[0] if resultado else "otro"
+        return primera if primera in _INTENCIONES_VALIDAS else "otro"
+    except Exception:
+        return "otro"
+
+
+# ── Helpers de contexto ───────────────────────────────────────────────────────
+def _deduplicar(docs: list) -> list:
+    vistos: set = set()
+    unicos = []
+    for doc in docs:
+        clave = (
+            doc.metadata.get("source", ""),
+            doc.metadata.get("row", ""),
+            doc.page_content.strip()[:120],
+        )
+        if clave not in vistos:
+            vistos.add(clave)
+            unicos.append(doc)
+    return unicos
+
+
+def _formatear_contexto(docs: list) -> str:
+    if not docs:
+        return "Sin resultados recuperados."
+    bloques = []
+    for i, doc in enumerate(docs, 1):
+        bloques.append(
+            f"[Doc {i}]\n"
+            f"source: {doc.metadata.get('source', 'N/D')}\n"
+            f"row: {doc.metadata.get('row', 'N/D')}\n"
+            f"contenido:\n{doc.page_content.strip()}"
+        )
+    return "\n\n".join(bloques)
+
+
+# ── Función principal ─────────────────────────────────────────────────────────
 def preguntar_stream(pregunta: str, session_id: str) -> Generator[str, None, None]:
-    if session_id not in memorias:
-        memorias[session_id] = []
+    _purgar_expiradas()
+    sesion    = _get_session(session_id)
+    historial = sesion["history"]
+    hist_texto = "\n".join(historial[-10:]) if historial else "(sin historial previo)"
 
-    historial = memorias[session_id]
-
+    intencion = _clasificar_intencion(pregunta)
     historial.append(f"Usuario: {pregunta}")
-    historial = historial[-6:]
-    memorias[session_id] = historial
 
-    if _es_ayuda_uso_rai(pregunta):
-        respuesta_uso = _respuesta_ayuda_uso_rai()
-        historial.append(f"Asistente: {respuesta_uso}")
-        memorias[session_id] = historial[-6:]
-        yield respuesta_uso
+    # Saludo → respuesta estática, sin LLM ni RAG
+    if intencion == "saludo":
+        historial.append(f"Asistente: {RESPUESTA_SALUDO}")
+        sesion["history"] = historial[-10:]
+        yield RESPUESTA_SALUDO
         return
 
-    if _es_consulta_general(pregunta):
-        respuesta_general = _respuesta_consulta_general(pregunta)
-        historial.append(f"Asistente: {respuesta_general}")
-        memorias[session_id] = historial[-6:]
-        yield respuesta_general
-        return
+    # FAQ → RAG con k pequeño + prompt FAQ
+    if intencion == "faq":
+        docs        = _deduplicar(retriever_faq.invoke(pregunta))
+        contexto    = _formatear_contexto(docs)
+        full_prompt = PROMPT_FAQ.format(
+            contexto=contexto,
+            historial=hist_texto,
+            pregunta=pregunta,
+        )
 
-    docs = _deduplicar_docs(retriever.invoke(pregunta))
-    context_text = _formatear_contexto(docs)
+    # Búsqueda → RAG con k grande + prompt BUSQUEDA
+    elif intencion == "busqueda":
+        docs        = _deduplicar(retriever_busqueda.invoke(pregunta))
+        contexto    = _formatear_contexto(docs)
+        full_prompt = PROMPT_BUSQUEDA.format(
+            contexto=contexto,
+            historial=hist_texto,
+            pregunta=pregunta,
+        )
 
-    full_prompt = (
-        f"{PROMPT_BASE}\n"
-        "Instrucción adicional:\n"
-        "- Si el usuario pide tesis/documentos, prioriza listar resultados concretos del contexto.\n"
-        "- No inventes títulos/autor/enlaces que no estén en el contexto.\n\n"
-        f"Historial:\n{chr(10).join(historial)}\n\n"
-        f"Contexto recuperado:\n{context_text}\n\n"
-        "Asistente:"
-    )
+    # Otro → LLM directo sin RAG
+    else:
+        full_prompt = PROMPT_OTRO.format(
+            historial=hist_texto,
+            pregunta=pregunta,
+        )
 
     respuesta = ""
-
-    for token in llm.stream(full_prompt):
-        respuesta += token
-        yield token
-
-    historial.append(f"Asistente: {respuesta}")
-    memorias[session_id] = historial[-6:]
+    try:
+        for token in llm.stream(full_prompt):
+            respuesta += token
+            yield token
+    except GeneratorExit:
+        pass
+    finally:
+        if respuesta:
+            historial.append(f"Asistente: {respuesta}")
+        sesion["history"] = historial[-10:]
