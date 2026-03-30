@@ -15,7 +15,7 @@ llm = OllamaLLM(model="llama3", streaming=True)
 # Retriever — k=2 en lugar de k=3 (menos contexto = más rápido)
 retriever = db.as_retriever(search_kwargs={"k": 2})
 
-memorias = {}
+memorias: dict[str, list[str]] = {}
 
 def preguntar_stream(pregunta: str, session_id: str):
     if session_id not in memorias:
@@ -28,6 +28,7 @@ def preguntar_stream(pregunta: str, session_id: str):
 
     historial.append(f"Usuario: {pregunta}")
     historial = historial[-6:]
+    memorias[session_id] = historial
 
     full_prompt = (
         f"{PROMPT_BASE}\n"
@@ -43,3 +44,4 @@ def preguntar_stream(pregunta: str, session_id: str):
         yield token
 
     historial.append(f"Asistente: {respuesta}")
+    memorias[session_id] = historial[-6:]

@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from uuid import uuid4
 from rag import preguntar_stream
 
 app = FastAPI()
@@ -21,8 +22,8 @@ app.add_middleware(
 
 # 👇 ahora incluye session_id
 class Pregunta(BaseModel):
-    query: str
-    session_id: str
+    query: str = Field(..., min_length=1)
+    session_id: str | None = None
 
 
 def generar_sse(pregunta: str, session_id: str):
@@ -33,12 +34,14 @@ def generar_sse(pregunta: str, session_id: str):
 
 @app.post("/chat")
 async def chat(p: Pregunta):
+    session_id = p.session_id or str(uuid4())
     return StreamingResponse(
-        generar_sse(p.query, p.session_id),
+        generar_sse(p.query, session_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
+            "X-Session-Id": session_id,
         },
     )
 
