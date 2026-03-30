@@ -1,24 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from rag import preguntar_stream  # tu función de RAG
 
 app = FastAPI()
 
 # ─── CORS ────────────────────────────────────────────────────────────────────
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # puerto de tu frontend
-    "http://localhost:5500",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5500",
-]
-
+# Para desarrollo local, permitir cualquier origen evita errores de preflight
+# cuando el frontend corre en puertos dinámicos (por ejemplo :5173, :4173, etc.).
+# Como este endpoint no usa cookies/sesión, dejamos credenciales en False.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],  # permite POST, GET, OPTIONS
     allow_headers=["*"],
 )
@@ -33,13 +28,6 @@ def generar_sse(pregunta: str):
     for token in preguntar_stream(pregunta):
         yield f"data: {token}\n\n"
     yield "data: [DONE]\n\n"
-
-
-# ─── Preflight OPTIONS para CORS ─────────────────────────────────────────────
-@app.options("/chat")
-async def preflight_chat():
-    """Responde al preflight para que el navegador permita el POST."""
-    return JSONResponse(content={"status": "ok"})
 
 
 # ─── Endpoint principal para chat ────────────────────────────────────────────
