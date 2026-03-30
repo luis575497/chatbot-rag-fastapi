@@ -20,6 +20,24 @@ retriever = db.as_retriever(search_kwargs={"k": 6})
 memorias: dict[str, list[str]] = {}
 
 
+def _deduplicar_docs(docs: list) -> list:
+    vistos: set[tuple[str, str, str]] = set()
+    unicos: list = []
+
+    for doc in docs:
+        clave = (
+            str(doc.metadata.get("source", "")),
+            str(doc.metadata.get("row", "")),
+            doc.page_content.strip(),
+        )
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        unicos.append(doc)
+
+    return unicos
+
+
 def _formatear_contexto(docs) -> str:
     if not docs:
         return "Sin resultados recuperados."
@@ -48,7 +66,7 @@ def preguntar_stream(pregunta: str, session_id: str) -> Generator[str, None, Non
 
     historial = memorias[session_id]
 
-    docs = retriever.invoke(pregunta)
+    docs = _deduplicar_docs(retriever.invoke(pregunta))
     context_text = _formatear_contexto(docs)
 
     historial.append(f"Usuario: {pregunta}")
