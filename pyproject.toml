@@ -1,0 +1,21 @@
+[project]
+name = "chatbot-biblioteca"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "chromadb>=1.5.5",
+    "docx2txt>=0.9",
+    "fastapi>=0.135.2",
+    "langchain>=1.2.13",
+    "langchain-chroma>=1.1.0",
+    "langchain-classic>=1.0.3",
+    "langchain-community>=0.4.1",
+    "langchain-ollama>=1.0.1",
+    "langchain-text-splitters>=1.1.1",
+    "ollama>=0.6.1",
+    "pydantic>=2.12.5",
+    "python-docx>=1.2.0",
+    "uvicorn>=0.42.0",
+]
