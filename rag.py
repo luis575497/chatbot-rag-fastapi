@@ -29,6 +29,11 @@ PATRON_BUSQUEDA_DOCUMENTAL = re.compile(
     r"investigaci[oó]n|repositorio|recurso)\b",
     re.IGNORECASE,
 )
+PATRON_AYUDA_USO_RAI = re.compile(
+    r"(c[oó]mo|como).*(buscar|b[uú]squeda|uso|usar).*(rai|repositorio)|"
+    r"(rai|repositorio).*(c[oó]mo|como).*(buscar|b[uú]squeda|uso|usar)",
+    re.IGNORECASE,
+)
 
 
 def _deduplicar_docs(docs: list) -> list:
@@ -87,6 +92,25 @@ def _respuesta_consulta_general(pregunta: str) -> str:
     )
 
 
+def _es_ayuda_uso_rai(texto: str) -> bool:
+    return bool(PATRON_AYUDA_USO_RAI.search(texto))
+
+
+def _respuesta_ayuda_uso_rai() -> str:
+    return (
+        "¡Claro! Si quieres **hacer una búsqueda en el RAI**, te recomiendo este flujo:\n\n"
+        "1) Define tu tema en 2–4 palabras clave.\n"
+        "   - Ejemplo: `violencia escolar adolescentes`.\n"
+        "2) Añade un filtro útil (tipo, año, autor o carrera).\n"
+        "   - Ejemplo: `tesis violencia escolar 2020-2024`.\n"
+        "3) Prueba variantes y sinónimos si salen pocos resultados.\n"
+        "   - Ejemplo: `acoso escolar` / `bullying`.\n"
+        "4) Revisa primero título, autor y año para descartar rápido.\n"
+        "5) Cuando encuentres uno relevante, abre el handle/enlace para ver el registro completo.\n\n"
+        "Si quieres, te ayudo a construir una consulta exacta según tu tema."
+    )
+
+
 def reset_session(session_id: str) -> None:
     memorias.pop(session_id, None)
 
@@ -97,12 +121,16 @@ def preguntar_stream(pregunta: str, session_id: str) -> Generator[str, None, Non
 
     historial = memorias[session_id]
 
-    docs = _deduplicar_docs(retriever.invoke(pregunta))
-    context_text = _formatear_contexto(docs)
-
     historial.append(f"Usuario: {pregunta}")
     historial = historial[-6:]
     memorias[session_id] = historial
+
+    if _es_ayuda_uso_rai(pregunta):
+        respuesta_uso = _respuesta_ayuda_uso_rai()
+        historial.append(f"Asistente: {respuesta_uso}")
+        memorias[session_id] = historial[-6:]
+        yield respuesta_uso
+        return
 
     if _es_consulta_general(pregunta):
         respuesta_general = _respuesta_consulta_general(pregunta)
@@ -110,6 +138,9 @@ def preguntar_stream(pregunta: str, session_id: str) -> Generator[str, None, Non
         memorias[session_id] = historial[-6:]
         yield respuesta_general
         return
+
+    docs = _deduplicar_docs(retriever.invoke(pregunta))
+    context_text = _formatear_contexto(docs)
 
     full_prompt = (
         f"{PROMPT_BASE}\n"
