@@ -1,5 +1,11 @@
 # 🧠 Chatbot RAG – Sistema de Consulta Inteligente
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-0.3+-orange.svg)](https://www.langchain.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
+
 Sistema de chatbot basado en arquitectura **RAG (Retrieval-Augmented Generation)** para bibliotecas y repositorios institucionales.
 
 Permite responder consultas sobre colecciones documentales utilizando modelos de lenguaje (LLM), embeddings y una base vectorial.
@@ -242,6 +248,22 @@ python load_data.py
 
 ---
 
+## 🤝 Contribuciones
+
+Las contribuciones son bienvenidas. Si tienes ideas para mejorar el sistema, por favor:
+
+1. Haz un fork del proyecto
+2. Crea una rama con tu función (`git checkout -b feature/nueva-funcionalidad`)
+3. Realiza tus cambios y haz commit (`git commit -m 'Añadir nueva funcionalidad'`)
+4. Sube la rama (`git push origin feature/nueva-funcionalidad`)
+5. Abre un Pull Request
+
+Para cambios importantes, abre primero un issue para discutir lo que te gustaría modificar.
+
+## 📄 Licencia
+
+Este proyecto está bajo la licencia MIT. Consulta el archivo [LICENSE](LICENSE) para más detalles.
+
 ## ⚠️ Limitaciones
 
 * Memoria no persistente
@@ -253,12 +275,11 @@ python load_data.py
 ## 🔧 Mejoras futuras
 
 * Persistencia de sesiones (Redis)
-* Re-ranking
 * Métricas
-* Integración con DSpace
 
 ---
 
 ## 👤 Autor
 
-Luis Enrique Lescano
+**Luis Enrique Lescano**
+![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat&logo=linkedin)](https://www.linkedin.com/in/luis-enrique-lescano)
